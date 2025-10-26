@@ -4,7 +4,7 @@ import Login from './Login';
 import './App.css';
 import Dashboard from './Dashboard';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = 'https://raka-1733-ai-todo-chatbot.hf.space';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
