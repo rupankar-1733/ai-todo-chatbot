@@ -232,9 +232,11 @@ function App() {
                 <div className="sidebar-task-actions">
                   {task.status !== 'completed' && (
                     <button 
-                      onClick={() => {
-                        completeTask(task.id);
-                        setTimeout(() => fetchTasks(), 500);
+                      onClick={async () => {
+                        await completeTask(task.id);
+                        await fetchTasks();
+                        setSidebarOpen(false);
+                        setTimeout(() => setSidebarOpen(true), 100);
                       }}
                       className="sidebar-action-btn complete"
                       title="Mark as complete"
