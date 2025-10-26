@@ -18,7 +18,10 @@ app = FastAPI(title="AI Todo Chatbot API")
 # CORS middleware for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend domain
+    allow_origins=["http://localhost:3000",
+        "https://ai-todo-chatbot.vercel.app",  
+        "https://rupankar-1733-ai-todo-chatbot.hf.space",  
+        "*" ],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
