@@ -5,7 +5,7 @@ import './Login.css';
 const API_URL = 'https://raka-1733-ai-todo-chatbot.hf.space';
 
 function Login({ onLoginSuccess }) {
-  const [isLogin, setIsLogin] = useState(true);
+  const [isSignup, setIsSignup] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -14,47 +14,102 @@ function Login({ onLoginSuccess }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+  // Clear form when switching tabs
+  const handleTabSwitch = (signup) => {
+    setIsSignup(signup);
+    setFormData({ username: '', email: '', password: '' }); // CLEAR FORM
     setError('');
+  };
+
+  // Email validation function
+  const isValidEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    setError(''); // Clear error on input change
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Validation
+    if (!formData.username.trim()) {
+      setError('Username is required');
+      return;
+    }
+
+    if (formData.username.length < 3) {
+      setError('Username must be at least 3 characters');
+      return;
+    }
+
+    if (isSignup) {
+      if (!formData.email.trim()) {
+        setError('Email is required');
+        return;
+      }
+      
+      if (!isValidEmail(formData.email)) {
+        setError('Please enter a valid email address');
+        return;
+      }
+    }
+
+    if (!formData.password) {
+      setError('Password is required');
+      return;
+    }
+
+    if (formData.password.length < 4) {
+      setError('Password must be at least 4 characters');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      if (isLogin) {
-        // Login
-        const response = await axios.post(`${API_URL}/api/login`, {
-          username: formData.username,
-          password: formData.password
-        });
-        
-        // Save token to localStorage
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('username', response.data.username);
-        
-        onLoginSuccess(response.data.token, response.data.username);
-      } else {
-        // Signup
+      if (isSignup) {
         await axios.post(`${API_URL}/api/signup`, {
           username: formData.username,
           email: formData.email,
           password: formData.password
         });
         
-        setError('');
-        alert('Account created successfully! Please login.');
-        setIsLogin(true);
-        setFormData({ username: '', email: '', password: '' });
+        // After signup, login automatically
+        const loginResponse = await axios.post(`${API_URL}/api/login`, {
+          username: formData.username,
+          password: formData.password
+        });
+        
+        const { token, username } = loginResponse.data;
+        localStorage.setItem('token', token);
+        localStorage.setItem('username', username);
+        onLoginSuccess(token, username);
+      } else {
+        const response = await axios.post(`${API_URL}/api/login`, {
+          username: formData.username,
+          password: formData.password
+        });
+        
+        const { token, username } = response.data;
+        localStorage.setItem('token', token);
+        localStorage.setItem('username', username);
+        onLoginSuccess(token, username);
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'An error occurred');
+      if (err.response?.data?.detail) {
+        setError(err.response.data.detail);
+      } else {
+        setError(isSignup ? 'Signup failed. Username might already exist.' : 'Invalid credentials');
+      }
     } finally {
       setLoading(false);
     }
@@ -69,21 +124,15 @@ function Login({ onLoginSuccess }) {
         </div>
 
         <div className="login-tabs">
-          <button
-            className={isLogin ? 'active' : ''}
-            onClick={() => {
-              setIsLogin(true);
-              setError('');
-            }}
+          <button 
+            className={!isSignup ? 'active' : ''} 
+            onClick={() => handleTabSwitch(false)}
           >
             Login
           </button>
-          <button
-            className={!isLogin ? 'active' : ''}
-            onClick={() => {
-              setIsLogin(false);
-              setError('');
-            }}
+          <button 
+            className={isSignup ? 'active' : ''} 
+            onClick={() => handleTabSwitch(true)}
           >
             Sign Up
           </button>
@@ -96,22 +145,22 @@ function Login({ onLoginSuccess }) {
               type="text"
               name="username"
               value={formData.username}
-              onChange={handleChange}
+              onChange={handleInputChange}
               placeholder="Enter username"
-              required
+              disabled={loading}
             />
           </div>
 
-          {!isLogin && (
+          {isSignup && (
             <div className="form-group">
               <label>Email</label>
               <input
                 type="email"
                 name="email"
                 value={formData.email}
-                onChange={handleChange}
+                onChange={handleInputChange}
                 placeholder="Enter email"
-                required
+                disabled={loading}
               />
             </div>
           )}
@@ -122,33 +171,35 @@ function Login({ onLoginSuccess }) {
               type="password"
               name="password"
               value={formData.password}
-              onChange={handleChange}
+              onChange={handleInputChange}
               placeholder="Enter password"
-              required
-              minLength={6}
+              disabled={loading}
             />
           </div>
 
           {error && <div className="error-message">{error}</div>}
 
           <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? 'Please wait...' : isLogin ? 'Login' : 'Sign Up'}
+            {loading ? 'Please wait...' : (isSignup ? 'Sign Up' : 'Login')}
           </button>
         </form>
 
         <div className="login-footer">
-          <p>
-            {isLogin ? "Don't have an account? " : "Already have an account? "}
-            <button
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setError('');
-              }}
-              className="toggle-btn"
-            >
-              {isLogin ? 'Sign Up' : 'Login'}
-            </button>
-          </p>
+          {isSignup ? (
+            <p>
+              Already have an account?{' '}
+              <button className="toggle-btn" onClick={() => handleTabSwitch(false)}>
+                Login
+              </button>
+            </p>
+          ) : (
+            <p>
+              Don't have an account?{' '}
+              <button className="toggle-btn" onClick={() => handleTabSwitch(true)}>
+                Sign Up
+              </button>
+            </p>
+          )}
         </div>
       </div>
     </div>
