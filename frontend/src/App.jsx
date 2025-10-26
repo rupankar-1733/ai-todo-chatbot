@@ -14,12 +14,10 @@ function App() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
-  const [activeTab, setActiveTab] = useState('all'); // NEW: Tab state
-  const [currentPage, setCurrentPage] = useState(1); // NEW: Pagination
-  const tasksPerPage = 8; // NEW: Limit tasks per page
+  const [sidebarOpen, setSidebarOpen] = useState(false); // NEW: Sidebar state
+  const [activeTab, setActiveTab] = useState('all');
   const chatEndRef = useRef(null);
 
-  // Check for existing session
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
     const savedUsername = localStorage.getItem('username');
@@ -66,6 +64,10 @@ function App() {
     localStorage.setItem('darkMode', newMode);
   };
 
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen);
+  };
+
   const fetchTasks = async (authToken) => {
     try {
       const response = await axios.get(`${API_URL}/api/tasks`, {
@@ -94,8 +96,6 @@ function App() {
 
       const aiMessage = { role: 'assistant', content: response.data.response };
       setMessages(prev => [...prev, aiMessage]);
-      
-      // Refresh tasks after AI response
       await fetchTasks();
     } catch (error) {
       const errorMessage = { 
@@ -132,7 +132,6 @@ function App() {
     }
   };
 
-  // NEW: Filter tasks based on active tab
   const getFilteredTasks = () => {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
@@ -155,165 +154,96 @@ function App() {
     }
   };
 
-  // NEW: Paginate filtered tasks
-  const getPaginatedTasks = () => {
-    const filtered = getFilteredTasks();
-    const startIndex = (currentPage - 1) * tasksPerPage;
-    const endIndex = startIndex + tasksPerPage;
-    return filtered.slice(startIndex, endIndex);
-  };
-
-  const totalPages = Math.ceil(getFilteredTasks().length / tasksPerPage);
-
-  // Reset to page 1 when changing tabs
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab]);
-
   if (!isLoggedIn) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
-  const displayedTasks = getPaginatedTasks();
+  const filteredTasks = getFilteredTasks();
 
   return (
     <div className={`app ${darkMode ? 'dark' : 'light'}`}>
-      {/* Header */}
-      <header className="app-header">
-        <div className="header-left">
-          <h1>🤖 AI Todo Assistant</h1>
+      {/* Sidebar Overlay */}
+      {sidebarOpen && (
+        <div className="sidebar-overlay" onClick={toggleSidebar}></div>
+      )}
+
+      {/* Sliding Sidebar */}
+      <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <h2>📋 Your Tasks</h2>
+          <button className="close-sidebar" onClick={toggleSidebar}>✕</button>
         </div>
-        <div className="header-right">
-          <button onClick={toggleDarkMode} className="icon-btn">
-            {darkMode ? '☀️' : '🌙'}
+
+        {/* Tabs inside sidebar */}
+        <div className="sidebar-tabs">
+          <button 
+            className={`sidebar-tab ${activeTab === 'all' ? 'active' : ''}`}
+            onClick={() => setActiveTab('all')}
+          >
+            📋 All ({tasks.length})
           </button>
-          <div className="user-menu">
-            <span className="username">{username}</span>
-            <button onClick={handleLogout} className="logout-btn">Logout</button>
-          </div>
-        </div>
-      </header>
-
-      {/* Tabs */}
-      <div className="tabs-container">
-        <button 
-          className={`tab ${activeTab === 'all' ? 'active' : ''}`}
-          onClick={() => setActiveTab('all')}
-        >
-          📋 All
-        </button>
-        <button 
-          className={`tab ${activeTab === 'today' ? 'active' : ''}`}
-          onClick={() => setActiveTab('today')}
-        >
-          📅 Today
-        </button>
-        <button 
-          className={`tab ${activeTab === 'week' ? 'active' : ''}`}
-          onClick={() => setActiveTab('week')}
-        >
-          📆 This Week
-        </button>
-        <button 
-          className={`tab ${activeTab === 'urgent' ? 'active' : ''}`}
-          onClick={() => setActiveTab('urgent')}
-        >
-          🔥 Urgent
-        </button>
-        <button 
-          className={`tab ${activeTab === 'high' ? 'active' : ''}`}
-          onClick={() => setActiveTab('high')}
-        >
-          ⭐ High Priority
-        </button>
-        <button 
-          className={`tab ${activeTab === 'completed' ? 'active' : ''}`}
-          onClick={() => setActiveTab('completed')}
-        >
-          ✅ Completed
-        </button>
-      </div>
-
-      {/* Chat Container */}
-      <div className="chat-container">
-        <div className="messages">
-          {messages.map((msg, idx) => (
-            <div key={idx} className={`message ${msg.role}`}>
-              <div className="message-avatar">
-                {msg.role === 'user' ? '👤' : '🤖'}
-              </div>
-              <div className="message-content">
-                {msg.content}
-              </div>
-            </div>
-          ))}
-          {loading && (
-            <div className="message assistant">
-              <div className="message-avatar">🤖</div>
-              <div className="message-content">
-                <div className="typing-indicator">
-                  <span></span><span></span><span></span>
-                </div>
-              </div>
-            </div>
-          )}
-          <div ref={chatEndRef} />
-        </div>
-
-        <div className="input-container">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder="Type your message..."
-            disabled={loading}
-          />
-          <button onClick={sendMessage} disabled={loading} className="send-btn">
-            Send
+          <button 
+            className={`sidebar-tab ${activeTab === 'today' ? 'active' : ''}`}
+            onClick={() => setActiveTab('today')}
+          >
+            📅 Today
+          </button>
+          <button 
+            className={`sidebar-tab ${activeTab === 'week' ? 'active' : ''}`}
+            onClick={() => setActiveTab('week')}
+          >
+            📆 This Week
+          </button>
+          <button 
+            className={`sidebar-tab ${activeTab === 'urgent' ? 'active' : ''}`}
+            onClick={() => setActiveTab('urgent')}
+          >
+            🔥 Urgent
+          </button>
+          <button 
+            className={`sidebar-tab ${activeTab === 'high' ? 'active' : ''}`}
+            onClick={() => setActiveTab('high')}
+          >
+            ⭐ High
+          </button>
+          <button 
+            className={`sidebar-tab ${activeTab === 'completed' ? 'active' : ''}`}
+            onClick={() => setActiveTab('completed')}
+          >
+            ✅ Completed
           </button>
         </div>
-      </div>
 
-      {/* Tasks Container - Fixed Height, No Scroll */}
-      <div className="tasks-container">
-        <div className="tasks-header">
-          <h2>📋 Your Tasks ({getFilteredTasks().length})</h2>
-          <button onClick={() => fetchTasks()} className="refresh-btn">🔄 Refresh</button>
-        </div>
-
-        <div className="tasks-grid">
-          {displayedTasks.length === 0 ? (
-            <div className="empty-state">
-              <p>No tasks found. Create one using the chat!</p>
+        {/* Tasks list in sidebar */}
+        <div className="sidebar-tasks">
+          {filteredTasks.length === 0 ? (
+            <div className="empty-sidebar">
+              <p>No tasks found</p>
             </div>
           ) : (
-            displayedTasks.map((task) => (
-              <div key={task.id} className="task-card">
-                <div className="task-header-row">
-                  <span className={`priority-badge ${task.priority}`}>
-                    {task.priority}
-                  </span>
-                  <span className={`status-badge ${task.status}`}>
-                    {task.status.replace('_', ' ')}
-                  </span>
+            filteredTasks.map((task) => (
+              <div key={task.id} className="sidebar-task">
+                <div className="sidebar-task-header">
+                  <span className={`priority-dot ${task.priority}`}></span>
+                  <h4>{task.title}</h4>
                 </div>
-                <h3 className="task-title">{task.title}</h3>
                 {task.due_date && (
-                  <p className="task-date">📅 Due: {task.due_date}</p>
+                  <p className="sidebar-task-date">📅 {task.due_date}</p>
                 )}
-                <div className="task-actions">
+                <div className="sidebar-task-actions">
                   {task.status !== 'completed' && (
                     <button 
                       onClick={() => completeTask(task.id)}
-                      className="action-btn complete"
+                      className="sidebar-action-btn complete"
+                      title="Mark as complete"
                     >
                       ✓
                     </button>
                   )}
                   <button 
                     onClick={() => deleteTask(task.id)}
-                    className="action-btn delete"
+                    className="sidebar-action-btn delete"
+                    title="Delete task"
                   >
                     🗑️
                   </button>
@@ -323,28 +253,72 @@ function App() {
           )}
         </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="pagination">
-            <button 
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="page-btn"
-            >
-              ← Prev
+        <button className="refresh-tasks-btn" onClick={() => fetchTasks()}>
+          🔄 Refresh Tasks
+        </button>
+      </div>
+
+      {/* Main Content */}
+      <div className="main-content">
+        {/* Header */}
+        <header className="app-header">
+          <div className="header-left">
+            <button className="hamburger-btn" onClick={toggleSidebar}>
+              ☰
             </button>
-            <span className="page-info">
-              Page {currentPage} of {totalPages}
-            </span>
-            <button 
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="page-btn"
-            >
-              Next →
+            <h1>🤖 AI Todo Assistant</h1>
+          </div>
+          <div className="header-right">
+            <button onClick={toggleDarkMode} className="icon-btn">
+              {darkMode ? '☀️' : '🌙'}
+            </button>
+            <div className="user-menu">
+              <span className="username">{username}</span>
+              <button onClick={handleLogout} className="logout-btn">Logout</button>
+            </div>
+          </div>
+        </header>
+
+        {/* Chat Container - Full Screen */}
+        <div className="chat-container-fullscreen">
+          <div className="messages">
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`message ${msg.role}`}>
+                <div className="message-avatar">
+                  {msg.role === 'user' ? '👤' : '🤖'}
+                </div>
+                <div className="message-content">
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div className="message assistant">
+                <div className="message-avatar">🤖</div>
+                <div className="message-content">
+                  <div className="typing-indicator">
+                    <span></span><span></span><span></span>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          <div className="input-container">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+              placeholder="Type your message..."
+              disabled={loading}
+            />
+            <button onClick={sendMessage} disabled={loading} className="send-btn">
+              Send
             </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
