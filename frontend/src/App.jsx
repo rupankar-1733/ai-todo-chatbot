@@ -2,272 +2,349 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import Login from './Login';
 import './App.css';
-import Dashboard from './Dashboard';
 
 const API_URL = 'https://raka-1733-ai-todo-chatbot.hf.space';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState('');
   const [token, setToken] = useState('');
-  
-  // DARK MODE STATE
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('darkMode');
-    return saved ? JSON.parse(saved) : false;
-  });
-  
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      content: '👋 Hi! I\'m your AI todo assistant. Try saying:\n• "Add buy groceries"\n• "Show me all tasks"\n• "Create high priority task to finish report"'
-    }
-  ]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
-  const messagesEndRef = useRef(null);
+  const [darkMode, setDarkMode] = useState(false);
+  const [activeTab, setActiveTab] = useState('all'); // NEW: Tab state
+  const [currentPage, setCurrentPage] = useState(1); // NEW: Pagination
+  const tasksPerPage = 8; // NEW: Limit tasks per page
+  const chatEndRef = useRef(null);
 
-  // APPLY DARK MODE
-  useEffect(() => {
-    document.body.classList.toggle('dark-mode', darkMode);
-    localStorage.setItem('darkMode', JSON.stringify(darkMode));
-  }, [darkMode]);
-
-  // Check for existing token on mount
+  // Check for existing session
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
     const savedUsername = localStorage.getItem('username');
-    
+    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+
     if (savedToken && savedUsername) {
-      verifyToken(savedToken, savedUsername);
+      setToken(savedToken);
+      setUsername(savedUsername);
+      setIsLoggedIn(true);
+      fetchTasks(savedToken);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    setDarkMode(savedDarkMode);
   }, []);
 
-  const verifyToken = async (token, username) => {
-    try {
-      await axios.get(`${API_URL}/api/verify`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setToken(token);
-      setUsername(username);
-      setIsAuthenticated(true);
-      loadTasks(token);
-    } catch (error) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('username');
-      setIsAuthenticated(false);
-    }
-  };
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleLoginSuccess = (newToken, newUsername) => {
     setToken(newToken);
     setUsername(newUsername);
-    setIsAuthenticated(true);
-    loadTasks(newToken);
+    setIsLoggedIn(true);
+    fetchTasks(newToken);
+    setMessages([{
+      role: 'assistant',
+      content: `👋 Hi ${newUsername}! I'm your AI todo assistant.`
+    }]);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('username');
+    setIsLoggedIn(false);
     setToken('');
     setUsername('');
-    setIsAuthenticated(false);
+    setMessages([]);
     setTasks([]);
-    setMessages([{
-      role: 'assistant',
-      content: '👋 Hi! I\'m your AI todo assistant.'
-    }]);
   };
 
   const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
+    const newMode = !darkMode;
+    setDarkMode(newMode);
+    localStorage.setItem('darkMode', newMode);
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const loadTasks = async (authToken = token) => {
+  const fetchTasks = async (authToken) => {
     try {
       const response = await axios.get(`${API_URL}/api/tasks`, {
-        headers: { Authorization: `Bearer ${authToken}` }
+        headers: { Authorization: `Bearer ${authToken || token}` }
       });
-      setTasks(response.data.tasks);
+      setTasks(response.data.tasks || []);
     } catch (error) {
-      console.error('Error loading tasks:', error);
+      console.error('Failed to fetch tasks');
     }
   };
 
-  const sendMessage = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
+  const sendMessage = async () => {
+    if (!input.trim()) return;
 
-    const userMessage = input.trim();
+    const userMessage = { role: 'user', content: input };
+    setMessages(prev => [...prev, userMessage]);
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API_URL}/api/chat`, 
-        { message: userMessage },
-        { headers: { Authorization: `Bearer ${token}` }}
+      const response = await axios.post(
+        `${API_URL}/api/chat`,
+        { message: input },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
+
+      const aiMessage = { role: 'assistant', content: response.data.response };
+      setMessages(prev => [...prev, aiMessage]);
       
-      setMessages(prev => [...prev, { role: 'assistant', content: response.data.response }]);
-      loadTasks();
+      // Refresh tasks after AI response
+      await fetchTasks();
     } catch (error) {
-      setMessages(prev => [...prev, { 
+      const errorMessage = { 
         role: 'assistant', 
-        content: '❌ Error: Could not process request.' 
-      }]);
+        content: '❌ Sorry, something went wrong.' 
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setLoading(false);
     }
   };
 
   const deleteTask = async (taskId) => {
-    if (!window.confirm('Delete this task?')) return;
-    
     try {
       await axios.delete(`${API_URL}/api/tasks/${taskId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      loadTasks();
-      setMessages(prev => [...prev, { role: 'assistant', content: '✅ Task deleted' }]);
+      await fetchTasks();
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '❌ Error deleting task' }]);
+      console.error('Failed to delete task');
     }
   };
 
-  const getStatusEmoji = (status) => {
-    return status === 'completed' ? '✅' : status === 'in_progress' ? '🔄' : '📝';
+  const completeTask = async (taskId) => {
+    try {
+      await axios.patch(
+        `${API_URL}/api/tasks/${taskId}`,
+        { status: 'completed' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      await fetchTasks();
+    } catch (error) {
+      console.error('Failed to complete task');
+    }
   };
 
-  const getPriorityColor = (priority) => {
-    const colors = {
-      urgent: 'priority-urgent',
-      high: 'priority-high',
-      medium: 'priority-medium',
-      low: 'priority-low'
-    };
-    return colors[priority] || 'priority-medium';
+  // NEW: Filter tasks based on active tab
+  const getFilteredTasks = () => {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    switch (activeTab) {
+      case 'today':
+        return tasks.filter(t => t.due_date === today && t.status !== 'completed');
+      case 'week':
+        return tasks.filter(t => t.due_date && t.due_date <= nextWeek && t.status !== 'completed');
+      case 'urgent':
+        return tasks.filter(t => t.priority === 'urgent' && t.status !== 'completed');
+      case 'high':
+        return tasks.filter(t => t.priority === 'high' && t.status !== 'completed');
+      case 'completed':
+        return tasks.filter(t => t.status === 'completed');
+      case 'all':
+      default:
+        return tasks;
+    }
   };
 
-  if (!isAuthenticated) {
+  // NEW: Paginate filtered tasks
+  const getPaginatedTasks = () => {
+    const filtered = getFilteredTasks();
+    const startIndex = (currentPage - 1) * tasksPerPage;
+    const endIndex = startIndex + tasksPerPage;
+    return filtered.slice(startIndex, endIndex);
+  };
+
+  const totalPages = Math.ceil(getFilteredTasks().length / tasksPerPage);
+
+  // Reset to page 1 when changing tabs
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
+
+  if (!isLoggedIn) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
+  const displayedTasks = getPaginatedTasks();
+
   return (
-    <div className={`app ${darkMode ? 'dark' : ''}`}>
-      <div className="container">
-        <div className="header">
-          <div>
-            <h1>🤖 AI Todo Assistant</h1>
-            <p>Chat with me to manage your tasks naturally!</p>
-          </div>
-          <div className="header-right">
-            <button onClick={toggleDarkMode} className="dark-mode-toggle" title="Toggle Dark Mode">
-              {darkMode ? '☀️' : '🌙'}
-            </button>
-            <span className="username">👤 {username}</span>
-            <button onClick={handleLogout} className="logout-btn">
-              Logout
-            </button>
+    <div className={`app ${darkMode ? 'dark' : 'light'}`}>
+      {/* Header */}
+      <header className="app-header">
+        <div className="header-left">
+          <h1>🤖 AI Todo Assistant</h1>
+        </div>
+        <div className="header-right">
+          <button onClick={toggleDarkMode} className="icon-btn">
+            {darkMode ? '☀️' : '🌙'}
+          </button>
+          <div className="user-menu">
+            <span className="username">{username}</span>
+            <button onClick={handleLogout} className="logout-btn">Logout</button>
           </div>
         </div>
-        
-        <Dashboard tasks={tasks} darkMode={darkMode} />
+      </header>
 
-        <div className="chat-container">
-          <div className="messages">
-            {messages.map((msg, idx) => (
-              <div key={idx} className={`message ${msg.role}`}>
-                <div className="avatar">
-                  {msg.role === 'assistant' ? 'AI' : 'You'}
-                </div>
-                <div className="message-content">
-                  {msg.content}
-                </div>
+      {/* Tabs */}
+      <div className="tabs-container">
+        <button 
+          className={`tab ${activeTab === 'all' ? 'active' : ''}`}
+          onClick={() => setActiveTab('all')}
+        >
+          📋 All
+        </button>
+        <button 
+          className={`tab ${activeTab === 'today' ? 'active' : ''}`}
+          onClick={() => setActiveTab('today')}
+        >
+          📅 Today
+        </button>
+        <button 
+          className={`tab ${activeTab === 'week' ? 'active' : ''}`}
+          onClick={() => setActiveTab('week')}
+        >
+          📆 This Week
+        </button>
+        <button 
+          className={`tab ${activeTab === 'urgent' ? 'active' : ''}`}
+          onClick={() => setActiveTab('urgent')}
+        >
+          🔥 Urgent
+        </button>
+        <button 
+          className={`tab ${activeTab === 'high' ? 'active' : ''}`}
+          onClick={() => setActiveTab('high')}
+        >
+          ⭐ High Priority
+        </button>
+        <button 
+          className={`tab ${activeTab === 'completed' ? 'active' : ''}`}
+          onClick={() => setActiveTab('completed')}
+        >
+          ✅ Completed
+        </button>
+      </div>
+
+      {/* Chat Container */}
+      <div className="chat-container">
+        <div className="messages">
+          {messages.map((msg, idx) => (
+            <div key={idx} className={`message ${msg.role}`}>
+              <div className="message-avatar">
+                {msg.role === 'user' ? '👤' : '🤖'}
               </div>
-            ))}
-            {loading && (
-              <div className="message assistant">
-                <div className="avatar">AI</div>
-                <div className="message-content loading">
+              <div className="message-content">
+                {msg.content}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="message assistant">
+              <div className="message-avatar">🤖</div>
+              <div className="message-content">
+                <div className="typing-indicator">
                   <span></span><span></span><span></span>
                 </div>
               </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <form onSubmit={sendMessage} className="input-form">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your message..."
-              disabled={loading}
-            />
-            <button type="submit" disabled={loading || !input.trim()}>
-              Send
-            </button>
-          </form>
+            </div>
+          )}
+          <div ref={chatEndRef} />
         </div>
 
-        <div className="task-list-container">
-          <div className="task-list-header">
-            <h2>📋 Your Tasks ({tasks.length})</h2>
-            <button onClick={() => loadTasks()} className="refresh-btn">
-              Refresh
-            </button>
-          </div>
-          <div className="task-list">
-            {tasks.length === 0 ? (
-              <p className="no-tasks">No tasks yet. Create one by chatting above!</p>
-            ) : (
-              tasks.map(task => (
-                <div key={task.id} className="task-card">
-                  <div className="task-info">
-                    <div className="task-title">
-                      <span className="task-emoji">{getStatusEmoji(task.status)}</span>
-                      <h3>{task.title}</h3>
-                    </div>
-                    {task.description && (
-                      <p className="task-description">{task.description}</p>
-                    )}
-                    <div className="task-meta">
-                      {task.status !== 'completed' && (
-                        <span className={`priority-badge ${getPriorityColor(task.priority)}`}>
-                          {task.priority}
-                        </span>
-                      )}
-                      <span className="status-badge">
-                        {task.status.replace('_', ' ')}
-                      </span>
-                      {task.due_date && (
-                        <span className="due-date">Due: {task.due_date}</span>
-                      )}
-                    </div>
-                  </div>
+        <div className="input-container">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+            placeholder="Type your message..."
+            disabled={loading}
+          />
+          <button onClick={sendMessage} disabled={loading} className="send-btn">
+            Send
+          </button>
+        </div>
+      </div>
+
+      {/* Tasks Container - Fixed Height, No Scroll */}
+      <div className="tasks-container">
+        <div className="tasks-header">
+          <h2>📋 Your Tasks ({getFilteredTasks().length})</h2>
+          <button onClick={() => fetchTasks()} className="refresh-btn">🔄 Refresh</button>
+        </div>
+
+        <div className="tasks-grid">
+          {displayedTasks.length === 0 ? (
+            <div className="empty-state">
+              <p>No tasks found. Create one using the chat!</p>
+            </div>
+          ) : (
+            displayedTasks.map((task) => (
+              <div key={task.id} className="task-card">
+                <div className="task-header-row">
+                  <span className={`priority-badge ${task.priority}`}>
+                    {task.priority}
+                  </span>
+                  <span className={`status-badge ${task.status}`}>
+                    {task.status.replace('_', ' ')}
+                  </span>
+                </div>
+                <h3 className="task-title">{task.title}</h3>
+                {task.due_date && (
+                  <p className="task-date">📅 Due: {task.due_date}</p>
+                )}
+                <div className="task-actions">
+                  {task.status !== 'completed' && (
+                    <button 
+                      onClick={() => completeTask(task.id)}
+                      className="action-btn complete"
+                    >
+                      ✓
+                    </button>
+                  )}
                   <button 
-                    onClick={() => deleteTask(task.id)} 
-                    className="delete-btn"
-                    title="Delete task"
+                    onClick={() => deleteTask(task.id)}
+                    className="action-btn delete"
                   >
                     🗑️
                   </button>
                 </div>
-              ))
-            )}
-          </div>
+              </div>
+            ))
+          )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="pagination">
+            <button 
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="page-btn"
+            >
+              ← Prev
+            </button>
+            <span className="page-info">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button 
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="page-btn"
+            >
+              Next →
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
