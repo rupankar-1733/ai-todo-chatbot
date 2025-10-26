@@ -14,7 +14,7 @@ function App() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // NEW: Sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
   const chatEndRef = useRef(null);
 
@@ -162,19 +162,16 @@ function App() {
 
   return (
     <div className={`app ${darkMode ? 'dark' : 'light'}`}>
-      {/* Sidebar Overlay */}
       {sidebarOpen && (
         <div className="sidebar-overlay" onClick={toggleSidebar}></div>
       )}
 
-      {/* Sliding Sidebar */}
       <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <h2>📋 Your Tasks</h2>
           <button className="close-sidebar" onClick={toggleSidebar}>✕</button>
         </div>
 
-        {/* Tabs inside sidebar */}
         <div className="sidebar-tabs">
           <button 
             className={`sidebar-tab ${activeTab === 'all' ? 'active' : ''}`}
@@ -214,7 +211,6 @@ function App() {
           </button>
         </div>
 
-        {/* Tasks list in sidebar */}
         <div className="sidebar-tasks">
           {filteredTasks.length === 0 ? (
             <div className="empty-sidebar">
@@ -230,10 +226,16 @@ function App() {
                 {task.due_date && (
                   <p className="sidebar-task-date">📅 {task.due_date}</p>
                 )}
+                <span className={`priority-badge-small ${task.priority}`}>
+                  {task.priority.toUpperCase()}
+                </span>
                 <div className="sidebar-task-actions">
                   {task.status !== 'completed' && (
                     <button 
-                      onClick={() => completeTask(task.id)}
+                      onClick={() => {
+                        completeTask(task.id);
+                        setTimeout(() => fetchTasks(), 500);
+                      }}
                       className="sidebar-action-btn complete"
                       title="Mark as complete"
                     >
@@ -241,7 +243,10 @@ function App() {
                     </button>
                   )}
                   <button 
-                    onClick={() => deleteTask(task.id)}
+                    onClick={() => {
+                      deleteTask(task.id);
+                      setTimeout(() => fetchTasks(), 500);
+                    }}
                     className="sidebar-action-btn delete"
                     title="Delete task"
                   >
@@ -258,9 +263,7 @@ function App() {
         </button>
       </div>
 
-      {/* Main Content */}
       <div className="main-content">
-        {/* Header */}
         <header className="app-header">
           <div className="header-left">
             <button className="hamburger-btn" onClick={toggleSidebar}>
@@ -279,7 +282,6 @@ function App() {
           </div>
         </header>
 
-        {/* Chat Container - Full Screen */}
         <div className="chat-container-fullscreen">
           <div className="messages">
             {messages.map((msg, idx) => (
@@ -310,7 +312,7 @@ function App() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
               placeholder="Type your message..."
               disabled={loading}
             />
@@ -325,4 +327,3 @@ function App() {
 }
 
 export default App;
-/* Force rebuild */

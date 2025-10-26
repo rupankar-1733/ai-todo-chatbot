@@ -229,6 +229,36 @@ body {
   margin: 0.3rem 0 0.6rem 1.6rem;
 }
 
+/* NEW: Priority Badge in Sidebar */
+.priority-badge-small {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin: 0.3rem 0 0.6rem 1.6rem;
+}
+
+.priority-badge-small.urgent {
+  background: #FF6B6B;
+  color: white;
+}
+
+.priority-badge-small.high {
+  background: #FFA500;
+  color: white;
+}
+
+.priority-badge-small.medium {
+  background: #4ECDC4;
+  color: white;
+}
+
+.priority-badge-small.low {
+  background: #95E1D3;
+  color: #2C2416;
+}
+
 .sidebar-task-actions {
   display: flex;
   gap: 0.5rem;
