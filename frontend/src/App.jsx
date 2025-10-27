@@ -22,12 +22,28 @@ function App() {
     const savedToken = localStorage.getItem('token');
     const savedUsername = localStorage.getItem('username');
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+    const savedMessages = localStorage.getItem('chatMessages');
 
     if (savedToken && savedUsername) {
       setToken(savedToken);
       setUsername(savedUsername);
       setIsLoggedIn(true);
       fetchTasks(savedToken);
+      
+      // Load saved chat messages
+      if (savedMessages) {
+        try {
+          setMessages(JSON.parse(savedMessages));
+        } catch (e) {
+          console.error('Failed to load chat history');
+        }
+      } else {
+        // Show welcome message if no saved chat
+        setMessages([{
+          role: 'assistant',
+          content: `👋 Hi ${savedUsername}! I'm your AI todo assistant.`
+        }]);
+      }
     }
 
     setDarkMode(savedDarkMode);
@@ -37,20 +53,30 @@ function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    if (messages.length > 0 && isLoggedIn) {
+      localStorage.setItem('chatMessages', JSON.stringify(messages));
+    }
+  }, [messages, isLoggedIn]);
+
   const handleLoginSuccess = (newToken, newUsername) => {
     setToken(newToken);
     setUsername(newUsername);
     setIsLoggedIn(true);
     fetchTasks(newToken);
-    setMessages([{
+    const welcomeMsg = [{
       role: 'assistant',
       content: `👋 Hi ${newUsername}! I'm your AI todo assistant.`
-    }]);
+    }];
+    setMessages(welcomeMsg);
+    localStorage.setItem('chatMessages', JSON.stringify(welcomeMsg));
   };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('username');
+    localStorage.removeItem('chatMessages'); // Clear chat on logout
     setIsLoggedIn(false);
     setToken('');
     setUsername('');
@@ -126,8 +152,8 @@ function App() {
         { status: 'completed' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      // Force page reload to show updated state
-      window.location.reload();
+      // Just fetch tasks instead of reload - SMOOTH UX!
+      await fetchTasks();
     } catch (error) {
       console.error('Failed to complete task:', error);
       alert('Failed to complete task. Please try again.');
