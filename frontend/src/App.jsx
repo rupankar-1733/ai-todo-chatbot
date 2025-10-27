@@ -16,7 +16,6 @@ function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
-  const [refreshKey, setRefreshKey] = useState(0); // NEW: Force refresh key
   const chatEndRef = useRef(null);
 
   useEffect(() => {
@@ -37,13 +36,6 @@ function App() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  // NEW: Refetch when refreshKey changes
-  useEffect(() => {
-    if (token && isLoggedIn) {
-      fetchTasks();
-    }
-  }, [refreshKey]);
 
   const handleLoginSuccess = (newToken, newUsername) => {
     setToken(newToken);
@@ -83,7 +75,7 @@ function App() {
       });
       setTasks(response.data.tasks || []);
     } catch (error) {
-      console.error('Failed to fetch tasks');
+      console.error('Failed to fetch tasks:', error);
     }
   };
 
@@ -123,7 +115,7 @@ function App() {
       });
       await fetchTasks();
     } catch (error) {
-      console.error('Failed to delete task');
+      console.error('Failed to delete task:', error);
     }
   };
 
@@ -134,10 +126,11 @@ function App() {
         { status: 'completed' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      // Force refresh
-      setRefreshKey(prev => prev + 1);
+      // Immediately fetch fresh tasks from server
+      await fetchTasks();
     } catch (error) {
-      console.error('Failed to complete task');
+      console.error('Failed to complete task:', error);
+      alert('Failed to complete task. Please try again.');
     }
   };
 
@@ -241,7 +234,9 @@ function App() {
                 <div className="sidebar-task-actions">
                   {task.status !== 'completed' && (
                     <button 
-                      onClick={() => completeTask(task.id)}
+                      onClick={async () => {
+                        await completeTask(task.id);
+                      }}
                       className="sidebar-action-btn complete"
                       title="Mark as complete"
                     >
@@ -249,7 +244,9 @@ function App() {
                     </button>
                   )}
                   <button 
-                    onClick={() => deleteTask(task.id)}
+                    onClick={async () => {
+                      await deleteTask(task.id);
+                    }}
                     className="sidebar-action-btn delete"
                     title="Delete task"
                   >
