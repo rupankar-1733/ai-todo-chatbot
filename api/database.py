@@ -1,178 +1,247 @@
 import json
 import os
-from typing import List, Optional
-from datetime import datetime
 import uuid
+from typing import List, Optional, Dict, Any
+from datetime import datetime
 from api.schemas import Task
+from threading import Lock
 
-class TaskDatabase:
-    def __init__(self, db_file: str = "tasks.json"):
-        self.db_file = db_file
-        self.tasks: List[Task] = []
+
+class Database:
+    """
+    Enterprise-grade database with thread-safe operations
+    Features: Write-through caching, automatic reload, thread safety
+    """
+    
+    def __init__(self, tasks_file: str = "tasks.json"):
+        self.tasks_file = tasks_file
+        self.tasks: Dict[str, dict] = {}
+        self._lock = Lock()  # Thread safety
         self.load_tasks()
-
+    
     def load_tasks(self):
-        """Load tasks from JSON file"""
-        if os.path.exists(self.db_file):
-            try:
-                with open(self.db_file, 'r') as f:
-                    data = json.load(f)
-                    self.tasks = [Task.from_dict(task) for task in data]
-            except Exception as e:
-                print(f"Error loading tasks: {e}")
-                self.tasks = []
-        else:
-            self.tasks = []
-
+        """Load tasks from JSON file with error handling"""
+        with self._lock:
+            if os.path.exists(self.tasks_file):
+                try:
+                    with open(self.tasks_file, 'r') as f:
+                        self.tasks = json.load(f)
+                    print(f"✅ Loaded {len(self.tasks)} tasks from {self.tasks_file}")
+                except json.JSONDecodeError as e:
+                    print(f"❌ JSON decode error: {e}")
+                    self.tasks = {}
+                except Exception as e:
+                    print(f"❌ Error loading tasks: {e}")
+                    self.tasks = {}
+            else:
+                self.tasks = {}
+                print(f"📝 No existing tasks file, starting fresh")
+    
     def save_tasks(self):
-        """Save tasks to JSON file"""
-        try:
-            with open(self.db_file, 'w') as f:
-                json.dump([task.to_dict() for task in self.tasks], f, indent=2)
-        except Exception as e:
-            print(f"Error saving tasks: {e}")
-
+        """Thread-safe save with atomic write"""
+        with self._lock:
+            try:
+                # Write to temporary file first (atomic operation)
+                temp_file = f"{self.tasks_file}.tmp"
+                with open(temp_file, 'w') as f:
+                    json.dump(self.tasks, f, indent=2)
+                
+                # Rename to actual file (atomic on POSIX systems)
+                os.replace(temp_file, self.tasks_file)
+                print(f"💾 Saved {len(self.tasks)} tasks to {self.tasks_file}")
+            except Exception as e:
+                print(f"❌ Error saving tasks: {e}")
+                # Clean up temp file if exists
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+    
     def create_task(
         self,
         title: str,
-        username: str,  # ADD USERNAME
-        description: Optional[str] = None,
+        username: str,
+        description: str = "",
         priority: str = "medium",
         due_date: Optional[str] = None,
         category: Optional[str] = None,
         tags: Optional[List[str]] = None,
         embedding: Optional[List[float]] = None
     ) -> Task:
-        """Create a new task for a specific user"""
+        """Create a new task with timestamps"""
         task_id = str(uuid.uuid4())
-        priority_clean = priority.lower()
+        now = datetime.now().isoformat()
         
-        task = Task(
-            id=task_id,
-            title=title,
-            description=description,
-            priority=priority_clean,
-            status="todo",
-            due_date=due_date,
-            category=category,
-            tags=tags,
-            embedding=embedding,
-            username=username  # ADD USERNAME
-        )
-        self.tasks.append(task)
-        self.save_tasks()
-        return task
-
+        task_data = {
+            "id": task_id,
+            "username": username,
+            "title": title,
+            "description": description,
+            "priority": priority,
+            "status": "todo",
+            "due_date": due_date,
+            "category": category,
+            "tags": tags or [],
+            "embedding": embedding,
+            "created_at": now,
+            "updated_at": now
+        }
+        
+        with self._lock:
+            self.tasks[task_id] = task_data
+        
+        self.save_tasks()  # Immediate write
+        
+        print(f"✅ Created task: {task_id} - '{title}' for user {username} (priority: {priority}, due: {due_date})")
+        
+        return Task(**task_data)
+    
     def get_task(self, task_id: str, username: str) -> Optional[Task]:
-        """Get a task by ID for a specific user"""
-        for task in self.tasks:
-            if task.id == task_id and task.username == username:
-                return task
+        """Get a specific task by ID for a user"""
+        self.load_tasks()  # Always reload for consistency
+        task_data = self.tasks.get(task_id)
+        if task_data and task_data.get("username") == username:
+            return Task(**task_data)
         return None
-
+    
     def get_all_tasks(self, username: str) -> List[Task]:
-        """Get all tasks for a specific user"""
-        return [task for task in self.tasks if task.username == username]
-
+        """Get all tasks for a user"""
+        self.load_tasks()  # Always reload for consistency
+        user_tasks = [
+            Task(**task_data) 
+            for task_data in self.tasks.values() 
+            if task_data.get("username") == username
+        ]
+        print(f"📋 Loaded {len(user_tasks)} tasks for user {username}")
+        return user_tasks
+    
     def update_task(
         self,
         task_id: str,
-        username: str,  # ADD USERNAME
+        username: str,
         title: Optional[str] = None,
         description: Optional[str] = None,
         priority: Optional[str] = None,
         status: Optional[str] = None,
         due_date: Optional[str] = None,
-        category: Optional[str] = None,
-        tags: Optional[List[str]] = None
+        category: Optional[str] = None
     ) -> Optional[Task]:
-        """Update an existing task for a specific user"""
-        task = self.get_task(task_id, username)
-        if not task:
+        """Update a task"""
+        self.load_tasks()  # Always reload
+        task_data = self.tasks.get(task_id)
+        
+        if not task_data or task_data.get("username") != username:
+            print(f"❌ Task {task_id} not found or wrong user")
             return None
-
-        if title:
-            task.title = title
-        if description:
-            task.description = description
-        if priority:
-            task.priority = priority.lower()
-        if status:
-            task.status = status.lower() if '_' not in status else status
-        if due_date:
-            task.due_date = due_date
-        if category:
-            task.category = category
-        if tags:
-            task.tags = tags
-
-        self.save_tasks()
-        return task
-
+        
+        # Update fields
+        if title is not None:
+            task_data["title"] = title
+        if description is not None:
+            task_data["description"] = description
+        if priority is not None:
+            task_data["priority"] = priority
+        if status is not None:
+            task_data["status"] = status
+        if due_date is not None:
+            task_data["due_date"] = due_date
+        if category is not None:
+            task_data["category"] = category
+        
+        task_data["updated_at"] = datetime.now().isoformat()
+        
+        with self._lock:
+            self.tasks[task_id] = task_data
+        
+        self.save_tasks()  # Immediate write
+        
+        print(f"✅ Updated task: {task_id} - status: {status}")
+        
+        return Task(**task_data)
+    
     def delete_task(self, task_id: str, username: str) -> bool:
-        """Delete a task for a specific user"""
-        task = self.get_task(task_id, username)
-        if task:
-            self.tasks.remove(task)
-            self.save_tasks()
-            return True
-        return False
-
+        """Delete a task"""
+        self.load_tasks()  # Always reload
+        task_data = self.tasks.get(task_id)
+        
+        if not task_data or task_data.get("username") != username:
+            print(f"❌ Task {task_id} not found or wrong user")
+            return False
+        
+        with self._lock:
+            del self.tasks[task_id]
+        
+        self.save_tasks()  # Immediate write
+        
+        print(f"🗑️ Deleted task: {task_id}")
+        return True
+    
     def search_tasks(
         self,
-        username: str,  # ADD USERNAME
-        query: Optional[str] = None,
+        username: str,
         status: Optional[str] = None,
         priority: Optional[str] = None,
         category: Optional[str] = None
     ) -> List[Task]:
-        """Search tasks by filters for a specific user"""
-        results = [task for task in self.tasks if task.username == username]
-
-        if status:
-            status_clean = status.lower()
-            results = [t for t in results if t.status == status_clean]
-        if priority:
-            priority_clean = priority.lower()
-            results = [t for t in results if t.priority == priority_clean and t.status != 'completed']
-        if category:
-            results = [t for t in results if t.category == category]
-        if query:
-            query_lower = query.lower()
-            results = [
-                t for t in results
-                if query_lower in t.title.lower() or query_lower in t.description.lower()
-            ]
-
+        """Search tasks with filters"""
+        self.load_tasks()  # Always reload
+        results = []
+        
+        for task_data in self.tasks.values():
+            if task_data.get("username") != username:
+                continue
+            
+            if status and task_data.get("status") != status:
+                continue
+            if priority and task_data.get("priority") != priority:
+                continue
+            if category and task_data.get("category") != category:
+                continue
+            
+            results.append(Task(**task_data))
+        
+        print(f"🔍 Search found {len(results)} tasks for user {username}")
         return results
+    
+    def semantic_search(
+        self,
+        query_embedding: List[float],
+        username: str,
+        top_k: int = 10,
+        threshold: float = 0.3
+    ) -> List[Task]:
+        """RAG: Semantic search using vector embeddings"""
+        import numpy as np
+        
+        self.load_tasks()  # Always reload
+        results = []
+        
+        for task_data in self.tasks.values():
+            if task_data.get("username") != username:
+                continue
+            
+            task_embedding = task_data.get("embedding")
+            if not task_embedding:
+                continue
+            
+            # Calculate cosine similarity
+            try:
+                similarity = np.dot(query_embedding, task_embedding) / (
+                    np.linalg.norm(query_embedding) * np.linalg.norm(task_embedding)
+                )
+                
+                if similarity >= threshold:
+                    results.append((similarity, Task(**task_data)))
+            except:
+                pass
+        
+        # Sort by similarity and return top_k
+        results.sort(key=lambda x: x[0], reverse=True)
+        return [task for _, task in results[:top_k]]
+    
+    def get_user(self, username: str) -> Optional[dict]:
+        """Get user from auth service (delegated to auth.py)"""
+        from api.auth import auth_service
+        return auth_service.users.get(username)
 
-    def cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
-        """Calculate cosine similarity between two vectors"""
-        if not vec1 or not vec2 or len(vec1) != len(vec2):
-            return 0.0
-        
-        dot_product = sum(a * b for a, b in zip(vec1, vec2))
-        magnitude1 = sum(a * a for a in vec1) ** 0.5
-        magnitude2 = sum(b * b for b in vec2) ** 0.5
-        
-        if magnitude1 == 0 or magnitude2 == 0:
-            return 0.0
-        
-        return dot_product / (magnitude1 * magnitude2)
-
-    def semantic_search(self, query_embedding: List[float], username: str, top_k: int = 5, threshold: float = 0.25) -> List[Task]:
-        """Search tasks using vector similarity for a specific user"""
-        user_tasks = [task for task in self.tasks if task.username == username]
-        scored_tasks = []
-        
-        for task in user_tasks:
-            if task.embedding:
-                similarity = self.cosine_similarity(query_embedding, task.embedding)
-                if similarity > threshold:
-                    scored_tasks.append((task, similarity))
-        
-        scored_tasks.sort(key=lambda x: x[1], reverse=True)
-        return [task for task, score in scored_tasks[:top_k]]
 
 # Global database instance
-db = TaskDatabase()
+db = Database()

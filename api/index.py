@@ -19,9 +19,9 @@ app = FastAPI(title="AI Todo Chatbot API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000",
-        "https://ai-todo-chatbot.vercel.app",  
-        "https://rupankar-1733-ai-todo-chatbot.hf.space",  
-        "*" ],  
+                   "https://ai-todo-chatbot-1.vercel.app",
+                   "https://rupankar-1733-ai-todo-chatbot.hf.space",
+                   "*" ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -66,25 +66,27 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
 async def root():
     return {
         "message": "AI Todo Chatbot API is running!",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "status": "healthy",
-        "features": ["authentication", "chat", "tasks", "RAG", "user-isolation"]
+        "features": ["authentication", "chat", "tasks", "RAG", "user-isolation", "PATCH-support"]
     }
 
 # ========== AUTH ENDPOINTS ==========
-
 @app.post("/api/signup")
 async def signup(request: SignupRequest):
     """Register a new user"""
     try:
         result = auth_service.create_user(
-            request.username, 
-            request.email, 
+            request.username,
+            request.email,
             request.password
         )
+        
         if not result["success"]:
             raise HTTPException(status_code=400, detail=result["error"])
+        
         return {"message": result["message"]}
+    
     except HTTPException:
         raise
     except Exception as e:
@@ -95,13 +97,16 @@ async def login(request: LoginRequest):
     """Login and get JWT token"""
     try:
         token = auth_service.authenticate_user(request.username, request.password)
+        
         if not token:
             raise HTTPException(status_code=401, detail="Invalid username or password")
+        
         return {
-            "token": token, 
+            "token": token,
             "username": request.username,
             "message": "Login successful"
         }
+    
     except HTTPException:
         raise
     except Exception as e:
@@ -111,13 +116,12 @@ async def login(request: LoginRequest):
 async def verify_token(user: dict = Depends(get_current_user)):
     """Verify if token is valid"""
     return {
-        "username": user["username"], 
+        "username": user["username"],
         "email": user["email"],
         "valid": True
     }
 
 # ========== PROTECTED CHAT ENDPOINTS ==========
-
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
     """
@@ -129,13 +133,14 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
         
         # SET USERNAME FOR THIS SESSION - USER ISOLATION
         agent.set_username(user["username"])
-        
         response = agent.chat(request.message)
+        
         return ChatResponse(response=response)
     
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Chat error for user {user['username']}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
 
 @app.post("/api/chat/clear")
@@ -159,7 +164,6 @@ async def get_conversation_history(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Error fetching history: {str(e)}")
 
 # ========== PROTECTED TASK ENDPOINTS ==========
-
 @app.get("/api/tasks", response_model=TaskResponse)
 async def get_tasks(
     user: dict = Depends(get_current_user),
@@ -175,11 +179,14 @@ async def get_tasks(
             priority=priority,
             category=category
         )
+        
         return TaskResponse(
             tasks=[task.to_dict() for task in tasks],
             count=len(tasks)
         )
+    
     except Exception as e:
+        print(f"❌ Get tasks error for user {user['username']}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching tasks: {str(e)}")
 
 @app.get("/api/tasks/{task_id}")
@@ -193,7 +200,48 @@ async def get_task(task_id: str, user: dict = Depends(get_current_user)):
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Get task error for user {user['username']}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching task: {str(e)}")
+
+@app.patch("/api/tasks/{task_id}")
+async def update_task_endpoint(
+    task_id: str,
+    update_data: dict,
+    user: dict = Depends(get_current_user)
+):
+    """Update a specific task (Protected) - USER ISOLATED"""
+    try:
+        print(f"🔄 PATCH /api/tasks/{task_id} - User: {user['username']}")
+        print(f"📝 Update data: {update_data}")
+        
+        updated_task = db.update_task(
+            task_id=task_id,
+            username=user["username"],
+            title=update_data.get("title"),
+            description=update_data.get("description"),
+            priority=update_data.get("priority"),
+            status=update_data.get("status"),
+            due_date=update_data.get("due_date"),
+            category=update_data.get("category")
+        )
+        
+        if not updated_task:
+            print(f"❌ Task {task_id} not found for user {user['username']}")
+            raise HTTPException(status_code=404, detail="Task not found or you don't have permission")
+        
+        print(f"✅ Task updated successfully! New status: {updated_task.status}")
+        return {
+            "success": True,
+            "message": "Task updated successfully",
+            "task": updated_task.to_dict()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Update task error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error updating task: {str(e)}")
 
 @app.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: str, user: dict = Depends(get_current_user)):
@@ -206,6 +254,7 @@ async def delete_task(task_id: str, user: dict = Depends(get_current_user)):
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Delete task error for user {user['username']}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting task: {str(e)}")
 
 # For Vercel serverless function

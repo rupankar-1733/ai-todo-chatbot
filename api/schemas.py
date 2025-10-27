@@ -1,47 +1,25 @@
+from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
-class Task:
-    def __init__(
-        self,
-        id: str,
-        title: str,
-        username: str,  # ADD THIS
-        description: Optional[str] = None,
-        priority: str = "medium",
-        status: str = "todo",
-        due_date: Optional[str] = None,
-        category: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        created_at: Optional[str] = None,
-        embedding: Optional[List[float]] = None
-    ):
-        self.id = id
-        self.title = title
-        self.username = username  # ADD THIS
-        self.description = description or ""
-        
-        if isinstance(priority, str):
-            self.priority = priority
-        else:
-            self.priority = priority.value if hasattr(priority, 'value') else str(priority)
-        
-        if isinstance(status, str):
-            self.status = status
-        else:
-            self.status = status.value if hasattr(status, 'value') else str(status)
-            
-        self.due_date = due_date
-        self.category = category
-        self.tags = tags or []
-        self.created_at = created_at or datetime.now().isoformat()
-        self.embedding = embedding or []
+class Task(BaseModel):
+    id: str
+    username: str
+    title: str
+    description: Optional[str] = ""
+    priority: str = "medium"
+    status: str = "todo"
+    due_date: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    embedding: Optional[List[float]] = None
+    created_at: str
+    updated_at: str
 
     def to_dict(self):
         return {
             "id": self.id,
             "title": self.title,
-            "username": self.username,  # ADD THIS
             "description": self.description,
             "priority": self.priority,
             "status": self.status,
@@ -49,20 +27,57 @@ class Task:
             "category": self.category,
             "tags": self.tags,
             "created_at": self.created_at,
-            "embedding": self.embedding
+            "updated_at": self.updated_at
         }
 
-    @classmethod
-    def from_dict(cls, data: dict):
-        return cls(**data)
 
-class ChatMessage:
+class TaskCreate(BaseModel):
+    title: str
+    description: Optional[str] = ""
+    priority: Optional[str] = "medium"
+    due_date: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    priority: Optional[str] = None
+    status: Optional[str] = None
+    due_date: Optional[str] = None
+    category: Optional[str] = None
+
+
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
     def __init__(self, role: str, content: str):
-        self.role = role
-        self.content = content
+        super().__init__(role=role, content=content)
 
-    def to_dict(self):
-        return {
-            "role": self.role,
-            "content": self.content
-        }
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+class ChatResponse(BaseModel):
+    response: str
+
+
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    password: str
+
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+
+class ConversationState(BaseModel):
+    """Track multi-turn conversations for task creation"""
+    mode: str = "normal"  # "normal", "awaiting_date", "awaiting_priority"
+    pending_task: Optional[dict] = None
+    original_query: Optional[str] = None
