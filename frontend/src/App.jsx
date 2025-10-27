@@ -126,8 +126,8 @@ function App() {
         { status: 'completed' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      // Immediately fetch fresh tasks from server
-      await fetchTasks();
+      // Force page reload to show updated state
+      window.location.reload();
     } catch (error) {
       console.error('Failed to complete task:', error);
       alert('Failed to complete task. Please try again.');
@@ -234,9 +234,7 @@ function App() {
                 <div className="sidebar-task-actions">
                   {task.status !== 'completed' && (
                     <button 
-                      onClick={async () => {
-                        await completeTask(task.id);
-                      }}
+                      onClick={() => completeTask(task.id)}
                       className="sidebar-action-btn complete"
                       title="Mark as complete"
                     >
@@ -244,9 +242,7 @@ function App() {
                     </button>
                   )}
                   <button 
-                    onClick={async () => {
-                      await deleteTask(task.id);
-                    }}
+                    onClick={() => deleteTask(task.id)}
                     className="sidebar-action-btn delete"
                     title="Delete task"
                   >
